@@ -1,23 +1,22 @@
-# Scan Plex for Shows - Pull ID
+# Postarr
 
+Generate Netflix-style screensavers and wallpapers from your Plex library for Nvidia Shield and other home media devices.
 
-# Fetch Media (source,ID)
-    #  Distinguish between - TV and Movies
-    # Grab English Logo
-    # If 4k Background, grab that else background
-    #  Output Background and Transparent Logo to folder
-    # If Logo and background create a folder and export images
+Fetches media artwork from FanartTV and TMDB APIs to create dynamic video screensavers with zoom effects and animated logos, or static wallpapers with composited artwork.
 
-# Build Wallpapers
-    # Scrapes to be builder folder
+## TODO
+- Build orchestrator task to coordinate workflow
+- Integrate Plex API to fetch media library and watch data
+- Implement content tracking (database/JSON log of generated files)
+- Implement cleanup logic to delete old generated content
+- Add scheduling/cron support for automated generation
+## Future Roadmap
 
-# Share Built Output
+- Integrate Letterboxd API to show watched movies and ratings
 
-# Considerations
-# How many Posters to build per season?
-# Way of finding 'best' art per show
+## Changelog
 
-# Letterboxed Ratings
-    Show recently watched films with ratings from household users
-    http://letterboxd.com/{username}/rss/
-
+### v0.1.0 (Initial Release)
+- FanartTV and TMDB artwork fetching
+- Static wallpaper generation
+- Video screensaver generation with zoom and logo drift effects

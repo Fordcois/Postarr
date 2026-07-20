@@ -1,66 +1,91 @@
-import requests
+import logging
 import os
-from dotenv import load_dotenv
 import random
-from PIL import Image
+from typing import Literal
+
 import numpy as np
+from urllib.parse import urlparse
+import requests
+from dotenv import load_dotenv
+from PIL import Image
 from moviepy import VideoClip
-import math
 
+logging.basicConfig(level=logging.DEBUG)
 
+# Typing Literals
+MediaType = Literal["tv", "movie"]
+Assets = Literal["logo", "background", "both"]
 
 load_dotenv()
 
 FANARTTV_API_KEY = os.environ["FANARTTV_API_KEY"]
+TMDB_API_KEY = os.environ["TMDB_API_KEY"]
 
 
-
-def download_image(image_url,filename,save_dir="artwork"):
-    file_extension = image_url.split('.')[-1]
-    os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f"{filename}.{file_extension}")
-    response = requests.get(image_url)
-    if response.status_code == 200:
+def download_image(image_url:str, filename:str, save_dir:str='artwork') -> str | None :
+    try:
+        file_extension = image_url.split('.')[-1]
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"{filename}.{file_extension}")
+        response = requests.get(image_url, timeout=10)
+        response.raise_for_status()
         with open(save_path, "wb") as f:
             f.write(response.content)
-        return True
-    else:
-        return False
+        return save_path
+    except Exception:
+        return None
     
 
 
-def get_media_artwork(media_type, media_id):
-    url = f"https://webservice.fanart.tv/v3.2/{media_type}/{media_id}"
+def get_fanarttv_media_artwork(media_type: MediaType, media_id: int, assets_to_fetch: Assets = 'both') -> dict | None:
+
+    if not FANARTTV_API_KEY:
+        logging.error("FANARTTV_API_KEY not set")
+        return None
+
+    saved_images = {}
+    # Fanart uses 'movies' rather than 'movie'
+    api_media_type = 'movies' if media_type == 'movie' else media_type
+    url = f"https://webservice.fanart.tv/v3.2/{api_media_type}/{media_id}"
     params = {"api_key": FANARTTV_API_KEY}
 
-    response = requests.get(url, params=params)
-
-    if response.status_code != 200:
-        print(response.status_code, response.text)
-        raise SystemExit()
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logging.error(f"FanartTV API error for {media_type}/{media_id}: {e}")
+        return None
 
     data = response.json()
 
-    logo_art = [image for image in data.get('hdtvlogo', []) if image['lang'] == 'en']
-    background_art = data.get('showbackground', [])
+    # Logo
+    if assets_to_fetch in ['logo', 'both']:
+        if api_media_type == 'tv':
+            logo_art = [image for image in data.get('hdtvlogo', []) if image['lang'] == 'en']
+        else:
+            logo_art = [image for image in data.get('hdmovielogo', []) if image['lang'] == 'en']
 
+        if logo_art:
+            found_logo = download_image(logo_art[0]['url'], f"{media_id}_logo")
+            if found_logo:
+                saved_images['logo'] = found_logo
 
-    if logo_art and background_art:
-        logo=logo_art[0]
-        background = random.choice(background_art)
+    # Background
+    if assets_to_fetch in ['background', 'both']:
+        if api_media_type == 'tv':
+            background_art = data.get('showbackground', [])
+        else:
+            background_art = data.get('moviebackground', [])
 
-    
-        
+        if background_art:
+            background = random.choice(background_art)
+            found_background = download_image(background['url'], f"{media_id}_background")
+            if found_background:
+                saved_images['background'] = found_background
 
-        logo_save_sucess = download_image(logo['url'],f"{media_id}_logo")
-        background_save_sucess = download_image(background['url'],f"{media_id}_background")
-        return logo_save_sucess and background_save_sucess
-    else:
-        return False
+    return saved_images if saved_images else None
                     
-
-    
-def combine_images(background_path, logo_path, output_filename, margin=20):
+def make_static_background(background_path:str, logo_path:str, output_filename:str, margin:int=20):
     # Open the images and ensure they support transparency
     background = Image.open(background_path).convert("RGBA")
     logo = Image.open(logo_path).convert("RGBA")
@@ -85,8 +110,8 @@ def make_screensaver(
     logo_path,
     output_filename,
     duration=10,
-    fps=30,
-    zoom_end=1.03,       # subtle background zoom
+    fps=24,
+    zoom_end=1.1,       # subtle background zoom
     logo_drift_px=50,    # bigger drift = smoother-looking motion at integer pixels
     margin=20
 ):
@@ -110,9 +135,9 @@ def make_screensaver(
         d = src_h / bg_h
         cropped_bg = background.transform(
             (bg_w, bg_h),
-            Image.AFFINE,
+            Image.AFFINE, # type: ignore
             (a, 0, src_left, 0, d, src_top),
-            resample=Image.BICUBIC
+            resample=Image.BICUBIC # type: ignore
         )
 
         frame = cropped_bg.copy()
@@ -126,7 +151,7 @@ def make_screensaver(
 
     clip = VideoClip(make_frame, duration=duration).with_fps(fps)
 
-    clip.write_videofile(
+    clip.write_videofile( # type: ignore
         output_filename,
         codec="libx264",
         fps=fps,
@@ -134,8 +159,52 @@ def make_screensaver(
         ffmpeg_params=["-crf", "18"]
     )
 
-media_id=454109
-get_media_artwork('tv',media_id)
-make_screensaver(f'./artwork/{media_id}_background.jpg',f'./artwork/{media_id}_logo.png',f'{media_id}_image.mkv',6)
-# combine_images('./artwork/403245_background.jpg','./artwork/403245_logo.png','71663_image.png')
-# make_screensaver('./artwork/71663_background.jpg','./artwork/71663_logo.png','71663_image.mkv',6)
+def get_tmdb_media_artwork(media_type: MediaType, media_id: int, assets_to_fetch: Assets = 'both') -> dict | None:
+    
+    if not TMDB_API_KEY:
+        logging.error("TMDB_API_KEY not set")
+        return None
+    
+    saved_images = {}
+    url = f"https://api.themoviedb.org/3/{media_type}/{media_id}/images"
+    params = {"api_key": TMDB_API_KEY}
+    TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/original"
+
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logging.error(f"TMDB API error for {media_type}/{media_id}: {e}")
+        return None
+
+    data = response.json()
+    
+    # Logo
+    if assets_to_fetch in ['logo', 'both']:
+        logo_art = sorted(
+            [img for img in data.get('logos', []) if img.get('iso_639_1') in ('en', None)],
+            key=lambda x: x.get('vote_average', 0),
+            reverse=True
+        )
+        if logo_art:
+            found_logo = download_image(TMDB_IMAGE_BASE_URL + logo_art[0]['file_path'], f"{media_id}_logo")
+            if found_logo:
+                saved_images['logo'] = found_logo
+    
+    # Background
+    if assets_to_fetch in ['background', 'both']:
+        # iso_639_1 is language fields, metadata without it should be textless by default
+        background_art = sorted(
+            [img for img in data.get('backdrops', []) if img.get('iso_639_1') is None],
+            key=lambda x: x.get('vote_average', 0),
+            reverse=True
+        )
+        if background_art:
+            found_background = download_image(TMDB_IMAGE_BASE_URL + background_art[0]['file_path'], f"{media_id}_background")
+            if found_background:
+                saved_images['background'] = found_background
+    
+    return saved_images if saved_images else None  
+    
+
+
