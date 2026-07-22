@@ -2,3 +2,4 @@
 .postarr_venv
 .env
 artwork/*
+mediaStatus.db
