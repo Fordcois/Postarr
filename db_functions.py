@@ -13,7 +13,7 @@ def create_table():
         id INTEGER PRIMARY KEY,
 
         plex_id INTEGER UNIQUE NOT NULL,
-        tmdb_id INTEGER UNIQUE,
+        tmdb_id INTEGER,
         tvdb_id INTEGER,
 
         media_name TEXT NOT NULL,

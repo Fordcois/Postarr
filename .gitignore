@@ -1,5 +1,9 @@
+__pycache__/
 .venv
 .postarr_venv
 .env
 artwork/*
 mediaStatus.db
+Outputs/*
+tv_response_example.py
+movie_response_example.py
