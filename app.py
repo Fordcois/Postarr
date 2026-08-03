@@ -25,7 +25,7 @@ FANARTTV_API_KEY = os.environ["FANARTTV_API_KEY"]
 TMDB_API_KEY = os.environ["TMDB_API_KEY"]
 
 
-def download_image(image_url:str, filename:str, save_dir:str='artwork') -> str | None :
+def download_image(image_url: str, filename: str, save_dir: str = 'artwork', is_background: bool = False) -> str | None:
     try:
         file_extension = image_url.split('.')[-1]
         os.makedirs(save_dir, exist_ok=True)
@@ -34,36 +34,40 @@ def download_image(image_url:str, filename:str, save_dir:str='artwork') -> str |
         response.raise_for_status()
         with open(save_path, "wb") as f:
             f.write(response.content)
+        
+        if is_background:
+            # Resize background to 1080p immediately after download
+            save_path = resize_image(save_path)
+        
         return save_path
     except Exception:
         return None
 
 
-def resize_background_to_1080p(image_path: str) -> str:
-    """Resize background image to 1920x1080 and save."""
-    target_size = (1920, 1080)
+def resize_image(image_path: str,width:int=1920,height:int=1080) -> str:
+    """Resize image and save as a PNG"""
     image = Image.open(image_path).convert("RGBA")
 
     # Calculate aspect ratio to maintain it
     img_ratio = image.width / image.height
-    target_ratio = target_size[0] / target_size[1]
+    target_ratio = width / height
 
     if img_ratio > target_ratio:
         # Image is wider, fit to height
-        new_height = target_size[1]
+        new_height = height
         new_width = int(new_height * img_ratio)
     else:
         # Image is taller, fit to width
-        new_width = target_size[0]
+        new_width = width
         new_height = int(new_width / img_ratio)
 
     # Resize image
     resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
     # Create new image with target dimensions and paste resized image centered
-    final_image = Image.new("RGBA", target_size, (0, 0, 0, 0))
-    offset_x = (target_size[0] - new_width) // 2
-    offset_y = (target_size[1] - new_height) // 2
+    final_image = Image.new("RGBA", (width,height), (0, 0, 0, 0))
+    offset_x = (width - new_width) // 2
+    offset_y = (height - new_height) // 2
     final_image.paste(resized, (offset_x, offset_y), resized)
 
     # Save over the original file
@@ -115,7 +119,7 @@ def get_fanarttv_media_artwork(media_type: MediaType, media_id: int, assets_to_f
 
         if background_art:
             background = random.choice(background_art)
-            found_background = download_image(background['url'], f"{media_id}_background")
+            found_background = download_image(background['url'], f"{media_id}_background",is_background=True)
             if found_background:
                 saved_images['background'] = found_background
 
@@ -123,7 +127,6 @@ def get_fanarttv_media_artwork(media_type: MediaType, media_id: int, assets_to_f
                     
 def make_static_background(background_path:str, logo_path:str, output_filename:str, margin:int=20):
     # Open the images and ensure they support transparency
-    background_path = resize_background_to_1080p(background_path)
     background = Image.open(background_path).convert("RGBA")
     logo = Image.open(logo_path).convert("RGBA")
 
@@ -152,7 +155,6 @@ def make_screensaver(
     logo_drift_px=50,    # bigger drift = smoother-looking motion at integer pixels
     margin=20
 ):
-    background_path = resize_background_to_1080p(background_path)
     background = Image.open(background_path).convert("RGBA")
     logo = Image.open(logo_path).convert("RGBA")
 
@@ -226,6 +228,9 @@ def get_tmdb_media_artwork(media_type: MediaType, media_id: int, assets_to_fetch
             reverse=True
         )
         if logo_art:
+            for logo in logo_art:
+                print (logo)
+                print ('')
             found_logo = download_image(TMDB_IMAGE_BASE_URL + logo_art[0]['file_path'], f"{media_id}_logo")
             if found_logo:
                 saved_images['logo'] = found_logo
@@ -239,7 +244,7 @@ def get_tmdb_media_artwork(media_type: MediaType, media_id: int, assets_to_fetch
             reverse=True
         )
         if background_art:
-            found_background = download_image(TMDB_IMAGE_BASE_URL + background_art[0]['file_path'], f"{media_id}_background")
+            found_background = download_image(TMDB_IMAGE_BASE_URL + background_art[0]['file_path'], f"{media_id}_background",is_background=True)
             if found_background:
                 saved_images['background'] = found_background
     
@@ -289,13 +294,7 @@ def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id, cu
     print(f"Creating wallpapers - {current}/{total} created")
 
 
-unwatched_tv_shows = get_unwatched_tvshows()
-total_shows = len(unwatched_tv_shows)
-start_time = datetime.now()
-# for show in unwatched_tv_shows:
-#     print (show)
-for movie in get_unwatched_movies():
-    print (movie)
+
 
 # for idx, show in enumerate(unwatched_tv_shows, 1):
 #     if show['tmdb']:
@@ -308,10 +307,14 @@ for movie in get_unwatched_movies():
 #             estimated_remaining = avg_time_per_item * remaining_items
 #             print(f"Elapsed: {int(elapsed // 60)}m - Estimated time to finish: {int(estimated_remaining // 60)} minutes\n")
 
-fetch_assets_and_make_screensaver('hello','movie',687163,555)
-fetch_assets_and_make_screensaver('hello','movie',1226863,555)
-fetch_assets_and_make_screensaver('hello','movie',1368166,555)
-fetch_assets_and_make_screensaver('hello','movie',1087822,555)
-fetch_assets_and_make_screensaver('hello','movie',724495,555)
-fetch_assets_and_make_screensaver('hello','movie',1430077,555)
-fetch_assets_and_make_screensaver('hello','movie',1266127,555)
+get_tmdb_media_artwork('movie',687163,'both')
+get_tmdb_media_artwork('movie',1087822,'both')
+get_tmdb_media_artwork('movie',1430077,'both')
+get_tmdb_media_artwork('tv',295780,'both')
+# fetch_assets_and_make_screensaver('hello','movie',687163,555)
+# fetch_assets_and_make_screensaver('hello','movie',1226863,555)
+# fetch_assets_and_make_screensaver('hello','movie',1368166,555)
+# fetch_assets_and_make_screensaver('hello','movie',1087822,555)
+# fetch_assets_and_make_screensaver('hello','movie',724495,555)
+# fetch_assets_and_make_screensaver('hello','movie',1430077,555)
+# fetch_assets_and_make_screensaver('hello','movie',1266127,555)
