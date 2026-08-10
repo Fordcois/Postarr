@@ -1,6 +1,7 @@
 from plexapi.server import PlexServer
 import os
 from dotenv import load_dotenv
+from typing import Literal
 
 load_dotenv()
 
@@ -30,45 +31,43 @@ def organise_content_ids(guid, guids):
     
     return ids
 
+def get_unwatched_media(library_name, content_type):
+    plex = PlexServer(PLEX_SERVER_URL, PLEX_TOKEN)
+    library = plex.library.section(library_name)
+    unwatched = []
+    
+    def is_unwatched(media):
+        if content_type == 'movie':
+            return not media.lastViewedAt
+        elif content_type == 'tvshow':
+            return media.viewedLeafCount != media.leafCount
+        return False
+    
+    for media in library.all():
+        if is_unwatched(media):
+            ids = organise_content_ids(media.guid, media.guids)
+            unwatched.append({'title': media.title,
+                              'tmdb': ids['tmdb'],
+                              'tvdb': ids['tvdb']})
+    
+    return unwatched
 
-
-def get_unwatched_movies():
-    # Connect to Plex server
-    plex = PlexServer(PLEX_SERVER_URL,PLEX_TOKEN)
-
-    # Get movie library
-    Movielibrary = plex.library.section("Movies")  # or whatever your library is named
-    movies=[]
-    # Get all movies
-    for movie in Movielibrary.all():
-        if not movie.lastViewedAt:
-            ids = organise_content_ids(movie.guid,movie.guids)
-            movies.append({'title':movie.title,
-                           'tmdb':ids['tmdb'],
-                           'tvdb':ids['tvdb']})
-            print (f"Title: {movie.title}")
-
-    return movies
-
-
-def get_unwatched_tvshows():
-    # Connect to Plex server
-    plex = PlexServer(PLEX_SERVER_URL,PLEX_TOKEN)
-
-    # Get TV shows library
-    TVlibrary = plex.library.section("TV Shows")
-    tvshows = []
-    # Get all TV shows that are not fully watched
-    for show in TVlibrary.all():
-        if show.viewedLeafCount != show.leafCount:
-            ids = organise_content_ids(show.guid, show.guids)
-            tvshows.append({'title': show.title,
-                            'tmdb': ids['tmdb'],
-                            'tvdb': ids['tvdb']})
-
-    return tvshows
-
-
+def get_unknown_ids(known_id: int, known_id_source: Literal['tvdb', 'tmdb']):
+    """
+    Find missing ID using TMDB's find-by-external-id endpoint.
+    
+    Args:
+        known_id: TVDB or TMDB ID
+        known_id_type: 'tvdb' or 'tmdb'
+    
+    Returns:
+        {'tvdb': int, 'tmdb': int}
+    
+    Reference:
+        https://developer.themoviedb.org/reference/find-by-external-id
+    """
+    # TODO: Query TMDB endpoint with known_id_type
+    pass
 
 
 

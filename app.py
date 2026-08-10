@@ -11,9 +11,11 @@ from dotenv import load_dotenv
 from PIL import Image
 from moviepy import VideoClip
 from db_functions import insert_record
-from plex import get_unwatched_movies, get_unwatched_tvshows
+from plex import get_unwatched_media
 
-logging.basicConfig(level=logging.DEBUG)
+from config import PREVIEW_MODE
+
+logging.basicConfig(level=logging.WARNING)
 
 # Typing Literals
 MediaType = Literal["tv", "movie"]
@@ -25,7 +27,7 @@ FANARTTV_API_KEY = os.environ["FANARTTV_API_KEY"]
 TMDB_API_KEY = os.environ["TMDB_API_KEY"]
 
 
-def download_image(image_url: str, filename: str, save_dir: str = 'artwork', is_background: bool = False) -> str | None:
+def download_image(image_url: str, filename: str, save_dir: str = 'artwork', is_background: bool = False,is_logo:bool=False) -> str | None:
     try:
         file_extension = image_url.split('.')[-1]
         os.makedirs(save_dir, exist_ok=True)
@@ -34,46 +36,60 @@ def download_image(image_url: str, filename: str, save_dir: str = 'artwork', is_
         response.raise_for_status()
         with open(save_path, "wb") as f:
             f.write(response.content)
-        
+
         if is_background:
             # Resize background to 1080p immediately after download
             save_path = resize_image(save_path)
-        
+        if is_logo:
+            save_path= resize_image(save_path, height=287, max_width=880, preserve_canvas=False)
+
         return save_path
     except Exception:
         return None
 
 
-def resize_image(image_path: str,width:int=1920,height:int=1080) -> str:
-    """Resize image and save as a PNG"""
+def resize_image(image_path: str, width: int = 1920, height: int = 1080, preserve_canvas: bool = True, max_width: int | None = None) -> str:
+    """Resize image and save as a PNG
+
+    Args:
+        preserve_canvas: If True, creates canvas and centers image (for backgrounds)
+                        If False, just scales image (for logos)
+        max_width: Maximum width constraint for logos (applies only when preserve_canvas=False)
+    """
     image = Image.open(image_path).convert("RGBA")
-
-    # Calculate aspect ratio to maintain it
     img_ratio = image.width / image.height
-    target_ratio = width / height
 
-    if img_ratio > target_ratio:
-        # Image is wider, fit to height
+    if preserve_canvas:
+        # Original behavior - fit into canvas
+        target_ratio = width / height
+
+        if img_ratio > target_ratio:
+            new_height = height
+            new_width = int(new_height * img_ratio)
+        else:
+            new_width = width
+            new_height = int(new_width / img_ratio)
+
+        resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        final_image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        offset_x = (width - new_width) // 2
+        offset_y = (height - new_height) // 2
+        final_image.paste(resized, (offset_x, offset_y), resized)
+        final_image.save(image_path, "PNG")
+    else:
+        # Logo mode - scale by height, but constrain width if it exceeds max_width
         new_height = height
         new_width = int(new_height * img_ratio)
-    else:
-        # Image is taller, fit to width
-        new_width = width
-        new_height = int(new_width / img_ratio)
 
-    # Resize image
-    resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        # If width exceeds max_width, scale by width instead
+        if max_width and new_width > max_width:
+            new_width = max_width
+            new_height = int(new_width / img_ratio)
 
-    # Create new image with target dimensions and paste resized image centered
-    final_image = Image.new("RGBA", (width,height), (0, 0, 0, 0))
-    offset_x = (width - new_width) // 2
-    offset_y = (height - new_height) // 2
-    final_image.paste(resized, (offset_x, offset_y), resized)
+        resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        resized.save(image_path, "PNG")
 
-    # Save over the original file
-    final_image.save(image_path, "PNG")
     return image_path
-
 
 
 
@@ -106,7 +122,7 @@ def get_fanarttv_media_artwork(media_type: MediaType, media_id: int, assets_to_f
             logo_art = [image for image in data.get('hdmovielogo', []) if image['lang'] == 'en']
 
         if logo_art:
-            found_logo = download_image(logo_art[0]['url'], f"{media_id}_logo")
+            found_logo = download_image(logo_art[0]['url'], f"{media_id}_logo",is_logo=True)
             if found_logo:
                 saved_images['logo'] = found_logo
 
@@ -125,22 +141,6 @@ def get_fanarttv_media_artwork(media_type: MediaType, media_id: int, assets_to_f
 
     return saved_images if saved_images else None
                     
-def make_static_background(background_path:str, logo_path:str, output_filename:str, margin:int=20):
-    # Open the images and ensure they support transparency
-    background = Image.open(background_path).convert("RGBA")
-    logo = Image.open(logo_path).convert("RGBA")
-
-    # Calculate position for bottom-left placement with a margin, 5% higher
-    x = margin
-    y = int(background.height - logo.height - margin * 1.05)
-
-    # Paste logo onto background, using logo's alpha channel as the mask
-    background.paste(logo, (x, y), logo)
-
-    # Save as PNG to preserve transparency
-    background.save(output_filename, "PNG")
-    print(f"Saved combined image to {output_filename}")
-
 def ease_in_out(t):
     """Smooth acceleration/deceleration curve instead of linear motion."""
     return 0.5 - 0.5 * np.cos(np.pi * t)
@@ -151,9 +151,11 @@ def make_screensaver(
     output_filename,
     duration=10,
     fps=24,
-    zoom_end=1.1,       # subtle background zoom
-    logo_drift_px=50,    # bigger drift = smoother-looking motion at integer pixels
-    margin=20
+    zoom_end=1.1,
+    logo_drift_px=50,
+    preview=False,
+    logo_offset_x=50,
+    logo_offset_y=100
 ):
     background = Image.open(background_path).convert("RGBA")
     logo = Image.open(logo_path).convert("RGBA")
@@ -165,7 +167,6 @@ def make_screensaver(
         progress = ease_in_out(t / duration)
         zoom = 1.0 + (zoom_end - 1.0) * progress
 
-        # --- Background zoom: single-step affine transform (sub-pixel accurate) ---
         src_w = bg_w / zoom
         src_h = bg_h / zoom
         src_left = (bg_w - src_w) / 2
@@ -175,23 +176,30 @@ def make_screensaver(
         d = src_h / bg_h
         cropped_bg = background.transform(
             (bg_w, bg_h),
-            Image.AFFINE, # type: ignore
+            Image.AFFINE,
             (a, 0, src_left, 0, d, src_top),
-            resample=Image.BICUBIC # type: ignore
+            resample=Image.BICUBIC
         )
 
         frame = cropped_bg.copy()
 
-        # --- Logo drift: simple integer positioning, no sub-pixel needed ---
-        x = margin + round(logo_drift_px * progress)
-        y = int(bg_h - logo_h - margin * 1.05)
+        x = logo_offset_x + round(logo_drift_px * progress)
+        y = int(bg_h - logo_h - logo_offset_y)
         frame.paste(logo, (x, y), logo)
 
         return np.array(frame.convert("RGB"))
 
+    if preview:
+        # Just save the first frame as PNG
+        frame = make_frame(0)
+        img = Image.fromarray(frame)
+        preview_filename = output_filename.replace('.mp4', '_preview.png')
+        img.save(preview_filename, "PNG")
+        print(f"Saved preview to {preview_filename}")
+        return preview_filename
+    
     clip = VideoClip(make_frame, duration=duration).with_fps(fps)
-
-    clip.write_videofile( # type: ignore
+    clip.write_videofile(
         output_filename,
         codec="libx264",
         fps=fps,
@@ -201,12 +209,11 @@ def make_screensaver(
     return output_filename
 
 def get_tmdb_media_artwork(media_type: MediaType, media_id: int, assets_to_fetch: Assets = 'both') -> dict | None:
-    
     if not TMDB_API_KEY:
         logging.error("TMDB_API_KEY not set")
         return None
     
-    saved_images = {}
+    images = {}
     url = f"https://api.themoviedb.org/3/{media_type}/{media_id}/images"
     params = {"api_key": TMDB_API_KEY}
     TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/original"
@@ -223,17 +230,17 @@ def get_tmdb_media_artwork(media_type: MediaType, media_id: int, assets_to_fetch
     # Logo
     if assets_to_fetch in ['logo', 'both']:
         logo_art = sorted(
-            [img for img in data.get('logos', []) if img.get('iso_639_1') in ('en', None)],
+            [img for img in data.get('logos', []) 
+            if img.get('iso_639_1') in ('en', None) and img['file_path'].lower().endswith('.png')],
             key=lambda x: x.get('vote_average', 0),
             reverse=True
         )
         if logo_art:
-            for logo in logo_art:
-                print (logo)
-                print ('')
-            found_logo = download_image(TMDB_IMAGE_BASE_URL + logo_art[0]['file_path'], f"{media_id}_logo")
+            logo_url = TMDB_IMAGE_BASE_URL + logo_art[0]['file_path']
+            found_logo = download_image(logo_url, f"{media_id}_logo",is_logo=True)
             if found_logo:
-                saved_images['logo'] = found_logo
+                images['logo'] = found_logo
+                images['logo_location'] = logo_url
     
     # Background
     if assets_to_fetch in ['background', 'both']:
@@ -244,13 +251,15 @@ def get_tmdb_media_artwork(media_type: MediaType, media_id: int, assets_to_fetch
             reverse=True
         )
         if background_art:
-            found_background = download_image(TMDB_IMAGE_BASE_URL + background_art[0]['file_path'], f"{media_id}_background",is_background=True)
+            background_url = TMDB_IMAGE_BASE_URL + background_art[0]['file_path']
+            found_background = download_image(background_url, f"{media_id}_background",is_background=True)
             if found_background:
-                saved_images['background'] = found_background
+                images['background'] = found_background
+                images['background_location'] = background_url
     
-    return saved_images if saved_images else None  
+    return images if images else None  
     
-def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id, current=1, total=1):
+def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id):
     """
     Fetch media artwork from TMDB, fallback to FanartTV if needed, then create screensaver.
 
@@ -265,56 +274,52 @@ def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id, cu
     # Try to get both artworks from TMDB first
     artwork_dict = get_tmdb_media_artwork(category, tmdb_id, 'both')
 
+    # TODO - Incorporate fanart as back-up
+
     if not artwork_dict:
         artwork_dict = {}
 
-    print(f"TMDB artwork: {artwork_dict}")
 
     # Verify we have both required assets
     if not artwork_dict.get('logo') or not artwork_dict.get('background'):
         logging.error(f"Could not fetch complete artwork for {tmdb_id}")
         return None
 
-    # Check file extensions: logo must be .png and background must be .jpg
-    logo_ext = artwork_dict['logo'].split('.')[-1].lower()
-    bg_ext = artwork_dict['background'].split('.')[-1].lower()
-
-    if logo_ext != 'png' or bg_ext != 'jpg':
-        logging.warning(f"Skipping {media_name}: logo is .{logo_ext}, background is .{bg_ext} (need .png and .jpg)")
-        return None
-
     # Create screensaver
-    output_filename = f"{tmdb_id}_screensaver.mp4"
-    make_screensaver(
+    os.makedirs('outputs', exist_ok=True)
+    output_filename = f"outputs/{tmdb_id}_screensaver.mp4"
+    screensaver = make_screensaver(
         background_path=artwork_dict['background'],
         logo_path=artwork_dict['logo'],
-        output_filename=output_filename
+        output_filename=output_filename,
+        preview=PREVIEW_MODE
     )
+    if screensaver:
+        insert_record(tmdb_id,tvdb_id,media_name,category,artwork_dict['logo_url'],artwork_dict['background'],screensaver,True,datetime.now(),datetime.now())
+        # TODO - Delete local versions of artwork
 
-    print(f"Creating wallpapers - {current}/{total} created")
 
 
 
 
-# for idx, show in enumerate(unwatched_tv_shows, 1):
-#     if show['tmdb']:
-#         fetch_assets_and_make_screensaver(show['title'], 'tv', show['tmdb'], 555, idx, total_shows)
+
+
+# for idx, movie in enumerate(unwatched_movies, 1):
+#     tmdb_id_str = str(movie['tmdb']) if movie['tmdb'] else None
+#     if tmdb_id_str and tmdb_id_str not in generated_ids:
+#         fetch_assets_and_make_screensaver(movie['title'], 'movie', tmdb_id_str, movie['tvdb'], idx, total_movies)
 
 #         elapsed = (datetime.now() - start_time).total_seconds()
-#         if idx < total_shows:
+#         if idx < total_movies:
 #             avg_time_per_item = elapsed / idx
-#             remaining_items = total_shows - idx
+#             remaining_items = total_movies - idx
 #             estimated_remaining = avg_time_per_item * remaining_items
 #             print(f"Elapsed: {int(elapsed // 60)}m - Estimated time to finish: {int(estimated_remaining // 60)} minutes\n")
+#     else:
+#         print(f"Skipping {movie['title']} (ID: {tmdb_id_str}) - screensaver already generated")
 
-get_tmdb_media_artwork('movie',687163,'both')
-get_tmdb_media_artwork('movie',1087822,'both')
-get_tmdb_media_artwork('movie',1430077,'both')
-get_tmdb_media_artwork('tv',295780,'both')
-# fetch_assets_and_make_screensaver('hello','movie',687163,555)
-# fetch_assets_and_make_screensaver('hello','movie',1226863,555)
-# fetch_assets_and_make_screensaver('hello','movie',1368166,555)
-# fetch_assets_and_make_screensaver('hello','movie',1087822,555)
-# fetch_assets_and_make_screensaver('hello','movie',724495,555)
-# fetch_assets_and_make_screensaver('hello','movie',1430077,555)
-# fetch_assets_and_make_screensaver('hello','movie',1266127,555)
+# def process_media():
+#     fetch_assets_and_make_screensaver()
+
+
+# process_media()
