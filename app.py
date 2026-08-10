@@ -10,10 +10,10 @@ import requests
 from dotenv import load_dotenv
 from PIL import Image
 from moviepy import VideoClip
-from db_functions import insert_record
+from db_functions import insert_record,update_record,remove_record
 from plex import get_unwatched_media
 
-from config import PREVIEW_MODE
+from config import PREVIEW_MODE,OUTPUT_PATH
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -199,7 +199,7 @@ def make_screensaver(
         return preview_filename
     
     clip = VideoClip(make_frame, duration=duration).with_fps(fps)
-    clip.write_videofile(
+    clip.write_videofile( # type: ignore
         output_filename,
         codec="libx264",
         fps=fps,
@@ -240,7 +240,7 @@ def get_tmdb_media_artwork(media_type: MediaType, media_id: int, assets_to_fetch
             found_logo = download_image(logo_url, f"{media_id}_logo",is_logo=True)
             if found_logo:
                 images['logo'] = found_logo
-                images['logo_location'] = logo_url
+                images['logo_url'] = logo_url
     
     # Background
     if assets_to_fetch in ['background', 'both']:
@@ -255,7 +255,7 @@ def get_tmdb_media_artwork(media_type: MediaType, media_id: int, assets_to_fetch
             found_background = download_image(background_url, f"{media_id}_background",is_background=True)
             if found_background:
                 images['background'] = found_background
-                images['background_location'] = background_url
+                images['background_url'] = background_url
     
     return images if images else None  
     
@@ -271,6 +271,9 @@ def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id):
         current: Current item number in batch
         total: Total items in batch
     """
+    # TODO -See if Media Preexists in Database
+
+
     # Try to get both artworks from TMDB first
     artwork_dict = get_tmdb_media_artwork(category, tmdb_id, 'both')
 
@@ -286,8 +289,7 @@ def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id):
         return None
 
     # Create screensaver
-    os.makedirs('outputs', exist_ok=True)
-    output_filename = f"outputs/{tmdb_id}_screensaver.mp4"
+    output_filename = f"{OUTPUT_PATH}/{tmdb_id}_screensaver.mp4"
     screensaver = make_screensaver(
         background_path=artwork_dict['background'],
         logo_path=artwork_dict['logo'],
@@ -295,8 +297,10 @@ def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id):
         preview=PREVIEW_MODE
     )
     if screensaver:
-        insert_record(tmdb_id,tvdb_id,media_name,category,artwork_dict['logo_url'],artwork_dict['background'],screensaver,True,datetime.now(),datetime.now())
+        insert_record(tmdb_id,tvdb_id,media_name,category,artwork_dict['logo_url'],artwork_dict['background_url'],screensaver,True,datetime.now(),datetime.now())
         # TODO - Delete local versions of artwork
+
+
 
 
 
@@ -321,5 +325,3 @@ def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id):
 # def process_media():
 #     fetch_assets_and_make_screensaver()
 
-
-# process_media()

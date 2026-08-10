@@ -83,3 +83,16 @@ def update_record(tmdb_id, **kwargs):
     cursor.execute(query, values)
     conn.commit()
     conn.close()
+
+def remove_record(tmdb_id):
+    """Delete a media record by tmdb_id. Returns True if deleted, False if not found."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    cursor.execute("DELETE FROM mediaStatus WHERE tmdb_id = ?", (tmdb_id,))
+    conn.commit()
+    
+    deleted = cursor.rowcount > 0
+    conn.close()
+    
+    return deleted
