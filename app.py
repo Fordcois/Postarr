@@ -10,8 +10,9 @@ import requests
 from dotenv import load_dotenv
 from PIL import Image
 from moviepy import VideoClip
-from db_functions import insert_record,update_record,remove_record
+from db_functions import upsert_record,update_record,remove_record,get_record
 from plex import get_unwatched_media
+from pathlib import Path
 
 from config import PREVIEW_MODE,OUTPUT_PATH
 
@@ -271,12 +272,15 @@ def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id):
         current: Current item number in batch
         total: Total items in batch
     """
-    # TODO -See if Media Preexists in Database
+    existing_record = get_record(tmdb_id)
 
+    if existing_record and existing_record['screensaver_location']:
+        # Screensaver already made, skip processing
+        logging.info(f"{media_name} - Screensaver already exists")
+        return
 
-    # Try to get both artworks from TMDB first
+    # Fetch fresh artwork from TMDB first
     artwork_dict = get_tmdb_media_artwork(category, tmdb_id, 'both')
-
     # TODO - Incorporate fanart as back-up
 
     if not artwork_dict:
@@ -285,6 +289,7 @@ def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id):
 
     # Verify we have both required assets
     if not artwork_dict.get('logo') or not artwork_dict.get('background'):
+        print (artwork_dict)
         logging.error(f"Could not fetch complete artwork for {tmdb_id}")
         return None
 
@@ -297,15 +302,19 @@ def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id):
         preview=PREVIEW_MODE
     )
     if screensaver:
-        insert_record(tmdb_id,tvdb_id,media_name,category,artwork_dict['logo_url'],artwork_dict['background_url'],screensaver,True,datetime.now(),datetime.now())
-        # TODO - Delete local versions of artwork
+        upsert_record(tmdb_id,tvdb_id,media_name,category,artwork_dict['logo_url'],artwork_dict['background_url'],screensaver,True,datetime.now(),datetime.now())
+
+        # Delete local versions of artwork
+        logo_local_asset = Path(artwork_dict['logo'])
+        background_local_asset = Path(artwork_dict['background'])
+
+        if logo_local_asset.exists() and background_local_asset.exists():
+            logo_local_asset.unlink()
+            background_local_asset.unlink()
+        logging.info(f"{media_name} - Screensaver Created")
 
 
-
-
-
-
-
+fetch_assets_and_make_screensaver('The Odyssey','movie',1368337,1368337)
 
 
 # for idx, movie in enumerate(unwatched_movies, 1):
