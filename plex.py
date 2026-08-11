@@ -2,11 +2,13 @@ from plexapi.server import PlexServer
 import os
 from dotenv import load_dotenv
 from typing import Literal
+import requests
 
 load_dotenv()
 
 PLEX_SERVER_URL = os.environ["PLEX_SERVER_URL"]
 PLEX_TOKEN = os.environ["PLEX_TOKEN"]
+TMDB_API_KEY = os.environ['TMDB_API_KEY']
 
 def organise_content_ids(guid, guids):
     """Extract TMDB/TVDB/IMDB IDs from Plex guid/guids"""
@@ -52,22 +54,62 @@ def get_unwatched_media(library_name, content_type):
     
     return unwatched
 
-def get_unknown_ids(known_id: int, known_id_source: Literal['tvdb', 'tmdb']):
+def get_unknown_ids(known_id: int, known_id_source: Literal['tvdb', 'tmdb'], media_type: Literal['tv', 'movie']):
     """
     Find missing ID using TMDB's find-by-external-id endpoint.
     
     Args:
-        known_id: TVDB or TMDB ID
-        known_id_type: 'tvdb' or 'tmdb'
+        known_id: TVDB or TMDB ID (as integer)
+        known_id_source: 'tvdb' or 'tmdb'
+        media_type: 'tv' or 'movie'
     
     Returns:
-        {'tvdb': int, 'tmdb': int}
-    
-    Reference:
-        https://developer.themoviedb.org/reference/find-by-external-id
+        {'tvdb': int, 'tmdb': int} or None if not found
     """
-    # TODO: Query TMDB endpoint with known_id_type
-    pass
+    
+    try:
+        if known_id_source == 'tmdb':
+            # You have TMDb ID, get TVDB ID
+            url = f"https://api.themoviedb.org/3/{media_type}/{known_id}"
+            params = {
+                "api_key": TMDB_API_KEY,
+                "append_to_response": "external_ids"
+            }
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            tvdb_id = data['external_ids'].get('tvdb_id')
+            return {'tmdb': known_id, 'tvdb': tvdb_id}
+        
+        elif known_id_source == 'tvdb':
+            # You have TVDB ID, get TMDb ID
+            url = f"https://api.themoviedb.org/3/find/{known_id}"
+            params = {
+                "api_key": TMDB_API_KEY,
+                "external_source": "tvdb_id"
+            }
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Check the appropriate results array based on media_type
+            results_key = "tv_results" if media_type == "tv" else "movie_results"
+            
+            if data.get(results_key) and len(data[results_key]) > 0:
+                tmdb_record = data[results_key][0]
+                tmdb_id = tmdb_record["id"]
+                return {'tvdb': known_id, 'tmdb': tmdb_id}
+            
+            return None
+            
+    except requests.RequestException as e:
+        print(f"Error fetching IDs: {e}")
+        return None
+
+print(get_unknown_ids(117488,'tmdb','tv'))
+print(get_unknown_ids(399731,'tvdb','tv'))
+
 
 
 
