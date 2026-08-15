@@ -14,7 +14,7 @@ from db_functions import upsert_record,update_record,remove_record,get_record
 from plex import get_unwatched_media
 from pathlib import Path
 
-from config import PREVIEW_MODE,OUTPUT_PATH
+from config import ZOOM_END,SCREENSAVER_DURATION,FPS,LOGO_HEIGHT,LOGO_MAX_WIDTH,LOGO_OFFSET_X,LOGO_OFFSET_Y,PREVIEW_MODE,OUTPUT_PATH,LOGO_DRIFT_DISTANCE
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -42,7 +42,7 @@ def download_image(image_url: str, filename: str, save_dir: str = 'artwork', is_
             # Resize background to 1080p immediately after download
             save_path = resize_image(save_path)
         if is_logo:
-            save_path= resize_image(save_path, height=287, max_width=880, preserve_canvas=False)
+            save_path= resize_image(save_path, height=LOGO_HEIGHT, max_width=LOGO_MAX_WIDTH, preserve_canvas=False)
 
         return save_path
     except Exception:
@@ -150,13 +150,13 @@ def make_screensaver(
     background_path,
     logo_path,
     output_filename,
-    duration=10,
-    fps=24,
-    zoom_end=1.1,
-    logo_drift_px=50,
+    duration=SCREENSAVER_DURATION,
+    fps=FPS,
+    zoom_end=ZOOM_END,
+    logo_drift_px=LOGO_DRIFT_DISTANCE,
     preview=False,
-    logo_offset_x=50,
-    logo_offset_y=100
+    logo_offset_x=LOGO_OFFSET_X,
+    logo_offset_y=LOGO_OFFSET_Y
 ):
     background = Image.open(background_path).convert("RGBA")
     logo = Image.open(logo_path).convert("RGBA")
@@ -184,9 +184,9 @@ def make_screensaver(
 
         frame = cropped_bg.copy()
 
-        x = logo_offset_x + round(logo_drift_px * progress)
-        y = int(bg_h - logo_h - logo_offset_y)
-        frame.paste(logo, (x, y), logo)
+        x = logo_offset_x + logo_drift_px * (t / duration)
+        y = bg_h - logo_h - logo_offset_y
+        frame.paste(logo, (int(x), int(y)), logo)
 
         return np.array(frame.convert("RGB"))
 
@@ -313,8 +313,32 @@ def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id):
             background_local_asset.unlink()
         logging.info(f"{media_name} - Screensaver Created")
 
+def remove_screensaver(tmdb_id:int,scrub_record:bool=False) -> bool:
+    """
+    Takes a tmdb_id and if a screensaver exists in the defined output location it deletes it and removes location from the db.remove_record.remove_record.
+    Args:
+        tmdb_id: TheMovieDBId Number
+        scrub_record: Fully delete the record from the database
+    """
+    found_record = get_record(1101383)
+    if found_record and found_record['screensaver_location']:
+        screensaver_location = Path(found_record['screensaver_location'])
+        if screensaver_location.exists:
+            screensaver_location.unlink()
+    if scrub_record:
+        remove_record(tmdb_id)
+    else:
+        update_record(tmdb_id,screensaver_location=None)
+    return True
 
-fetch_assets_and_make_screensaver('The Odyssey','movie',1368337,1368337)
+
+
+
+
+if __name__ == "__main__":
+    # remove_record(1101383)
+    remove_screensaver(1101383)
+    # fetch_assets_and_make_screensaver('The End Of Oak Street','movie',1101383,1101383)
 
 
 # for idx, movie in enumerate(unwatched_movies, 1):

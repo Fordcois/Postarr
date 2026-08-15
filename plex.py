@@ -10,7 +10,7 @@ PLEX_SERVER_URL = os.environ["PLEX_SERVER_URL"]
 PLEX_TOKEN = os.environ["PLEX_TOKEN"]
 TMDB_API_KEY = os.environ['TMDB_API_KEY']
 
-def organise_content_ids(guid, guids):
+def organise_content_ids(guid, guids,media_type):
     """Extract TMDB/TVDB/IMDB IDs from Plex guid/guids"""
     ids: dict[str, str | None] = {'tmdb': None, 'tvdb': None}
     
@@ -30,7 +30,13 @@ def organise_content_ids(guid, guids):
             ids['tmdb'] = guid.split('//')[1].split('?')[0]
         elif 'thetvdb' in guid:
             ids['tvdb'] = guid.split('//')[1].split('?')[0]
-    
+        # Find Missing id
+    if ids['tmdb'] and not ids['tvdb']:
+        # TODO: Remove this check - movies don't have TVDB IDs, only TV shows do
+        ids['tvdb']=get_unknown_ids(ids['tmdb'],'tmdb',media_type)
+    elif ids['tvdb'] and not ids['tmdb']:
+        ids['tmdb']=get_unknown_ids(ids['tvdb'],'tvdb',media_type)
+
     return ids
 
 def get_unwatched_media(library_name, content_type):
@@ -47,7 +53,8 @@ def get_unwatched_media(library_name, content_type):
     
     for media in library.all():
         if is_unwatched(media):
-            ids = organise_content_ids(media.guid, media.guids)
+            api_type = 'tv' if content_type == 'tvshow' else 'movie'
+            ids = organise_content_ids(media.guid, media.guids, api_type)
             unwatched.append({'title': media.title,
                               'tmdb': ids['tmdb'],
                               'tvdb': ids['tvdb']})
@@ -78,9 +85,8 @@ def get_unknown_ids(known_id: int, known_id_source: Literal['tvdb', 'tmdb'], med
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
-            
             tvdb_id = data['external_ids'].get('tvdb_id')
-            return {'tmdb': known_id, 'tvdb': tvdb_id}
+            return tvdb_id
         
         elif known_id_source == 'tvdb':
             # You have TVDB ID, get TMDb ID
@@ -99,18 +105,13 @@ def get_unknown_ids(known_id: int, known_id_source: Literal['tvdb', 'tmdb'], med
             if data.get(results_key) and len(data[results_key]) > 0:
                 tmdb_record = data[results_key][0]
                 tmdb_id = tmdb_record["id"]
-                return {'tvdb': known_id, 'tmdb': tmdb_id}
+                return tmdb_id
             
             return None
             
     except requests.RequestException as e:
         print(f"Error fetching IDs: {e}")
         return None
-
-print(get_unknown_ids(117488,'tmdb','tv'))
-print(get_unknown_ids(399731,'tvdb','tv'))
-
-
 
 
 
