@@ -3,7 +3,7 @@ __pycache__/
 .postarr_venv
 .env
 artwork/*
-mediaStatus.db
+*.db
 Outputs/*
 tv_response_example.py
 movie_response_example.py

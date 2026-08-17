@@ -61,7 +61,7 @@ def get_unwatched_media(library_name, content_type):
     
     return unwatched
 
-def get_unknown_ids(known_id: int, known_id_source: Literal['tvdb', 'tmdb'], media_type: Literal['tv', 'movie']):
+def get_unknown_ids(known_id: int, known_id_source: Literal['tvdb', 'tmdb'], media_type: Literal['tv', 'movie'])-> int | None:
     """
     Find missing ID using TMDB's find-by-external-id endpoint.
     

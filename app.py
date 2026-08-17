@@ -13,8 +13,7 @@ from moviepy import VideoClip
 from db_functions import upsert_record,update_record,remove_record,get_record
 from plex import get_unwatched_media
 from pathlib import Path
-
-from config import ZOOM_END,SCREENSAVER_DURATION,FPS,LOGO_HEIGHT,LOGO_MAX_WIDTH,LOGO_OFFSET_X,LOGO_OFFSET_Y,PREVIEW_MODE,OUTPUT_PATH,LOGO_DRIFT_DISTANCE
+import config
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -42,7 +41,7 @@ def download_image(image_url: str, filename: str, save_dir: str = 'artwork', is_
             # Resize background to 1080p immediately after download
             save_path = resize_image(save_path)
         if is_logo:
-            save_path= resize_image(save_path, height=LOGO_HEIGHT, max_width=LOGO_MAX_WIDTH, preserve_canvas=False)
+            save_path= resize_image(save_path, height=config.LOGO_HEIGHT, max_width=config.LOGO_MAX_WIDTH, preserve_canvas=False)
 
         return save_path
     except Exception:
@@ -150,13 +149,13 @@ def make_screensaver(
     background_path,
     logo_path,
     output_filename,
-    duration=SCREENSAVER_DURATION,
-    fps=FPS,
-    zoom_end=ZOOM_END,
-    logo_drift_px=LOGO_DRIFT_DISTANCE,
+    duration=config.SCREENSAVER_DURATION,
+    fps=config.FPS,
+    zoom_end=config.ZOOM_END,
+    logo_drift_px=config.LOGO_DRIFT_DISTANCE,
     preview=False,
-    logo_offset_x=LOGO_OFFSET_X,
-    logo_offset_y=LOGO_OFFSET_Y
+    logo_offset_x=config.LOGO_OFFSET_X,
+    logo_offset_y=config.LOGO_OFFSET_Y
 ):
     background = Image.open(background_path).convert("RGBA")
     logo = Image.open(logo_path).convert("RGBA")
@@ -273,7 +272,7 @@ def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id):
         total: Total items in batch
     """
     existing_record = get_record(tmdb_id)
-
+    # TODO - Should Overwrite Existing Screensaver
     if existing_record and existing_record['screensaver_location']:
         # Screensaver already made, skip processing
         logging.info(f"{media_name} - Screensaver already exists")
@@ -294,12 +293,17 @@ def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id):
         return None
 
     # Create screensaver
-    output_filename = f"{OUTPUT_PATH}/{tmdb_id}_screensaver.mp4"
+    # Check Output Location Exists
+    if not Path(config.OUTPUT_PATH).exists():
+        logging.error(f"{config.OUTPUT_PATH} - Location does not exist")
+        return
+
+    output_filename = f"{config.OUTPUT_PATH}/{tmdb_id}_screensaver.mp4"
     screensaver = make_screensaver(
         background_path=artwork_dict['background'],
         logo_path=artwork_dict['logo'],
         output_filename=output_filename,
-        preview=PREVIEW_MODE
+        preview=config.PREVIEW_MODE
     )
     if screensaver:
         upsert_record(tmdb_id,tvdb_id,media_name,category,artwork_dict['logo_url'],artwork_dict['background_url'],screensaver,True,datetime.now(),datetime.now())
@@ -315,12 +319,12 @@ def fetch_assets_and_make_screensaver(media_name, category, tmdb_id, tvdb_id):
 
 def remove_screensaver(tmdb_id:int,scrub_record:bool=False) -> bool:
     """
-    Takes a tmdb_id and if a screensaver exists in the defined output location it deletes it and removes location from the db.remove_record.remove_record.
+    Takes a tmdb_id and if a screensaver exists in the defined output location it deletes it and removes location from the database. Scrub record will fully delete the entry in the database
     Args:
         tmdb_id: TheMovieDBId Number
         scrub_record: Fully delete the record from the database
     """
-    found_record = get_record(1101383)
+    found_record = get_record(tmdb_id)
     if found_record and found_record['screensaver_location']:
         screensaver_location = Path(found_record['screensaver_location'])
         if screensaver_location.exists:
@@ -331,30 +335,25 @@ def remove_screensaver(tmdb_id:int,scrub_record:bool=False) -> bool:
         update_record(tmdb_id,screensaver_location=None)
     return True
 
+def main():
+    """
+    This is the main Orchestrator task of the Project
+    """
+    # Scan Plex for Unwatched Media
+    for library in config.CONTENT_LIBRARIES:
+        unwatched_media = get_unwatched_media(library['LibName'],library['ContentType'])
+        for media in unwatched_media:
+            fetch_assets_and_make_screensaver(media['title'],library['ContentType'],media['tmdb'],media['tvdb'])
+    
+    # New Media - Add to DB
+    # Media in DB but not in New Media - Delete record
+    # Process DB and generate Screensavers
+    # - If Screensaver already exists skip it
+    # - Log Changes 
+    
 
 
 
 
 if __name__ == "__main__":
-    # remove_record(1101383)
-    remove_screensaver(1101383)
-    # fetch_assets_and_make_screensaver('The End Of Oak Street','movie',1101383,1101383)
-
-
-# for idx, movie in enumerate(unwatched_movies, 1):
-#     tmdb_id_str = str(movie['tmdb']) if movie['tmdb'] else None
-#     if tmdb_id_str and tmdb_id_str not in generated_ids:
-#         fetch_assets_and_make_screensaver(movie['title'], 'movie', tmdb_id_str, movie['tvdb'], idx, total_movies)
-
-#         elapsed = (datetime.now() - start_time).total_seconds()
-#         if idx < total_movies:
-#             avg_time_per_item = elapsed / idx
-#             remaining_items = total_movies - idx
-#             estimated_remaining = avg_time_per_item * remaining_items
-#             print(f"Elapsed: {int(elapsed // 60)}m - Estimated time to finish: {int(estimated_remaining // 60)} minutes\n")
-#     else:
-#         print(f"Skipping {movie['title']} (ID: {tmdb_id_str}) - screensaver already generated")
-
-# def process_media():
-#     fetch_assets_and_make_screensaver()
-
+    main()

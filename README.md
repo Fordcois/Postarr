@@ -5,14 +5,14 @@ Generate Netflix-style screensavers and wallpapers from your Plex library for Nv
 Fetches media artwork from FanartTV and TMDB APIs to create dynamic video screensavers with zoom effects and animated logos, or static wallpapers with composited artwork.
 
 ## TODO
-- Build orchestrator task to coordinate workflow
-- Integrate Plex API to fetch media library and watch data
-- Implement content tracking (database/JSON log of generated files)
-- Implement cleanup logic to delete old generated content
+- ~~Build orchestrator task to coordinate workflow~~
+- ~~Integrate Plex API to fetch media library and watch data~~
+- ~~Implement content tracking (database/JSON log of generated files)~~
+- ~~Implement cleanup logic to delete old generated content~~
 - Add scheduling/cron support for automated generation
 ## Future Roadmap
-
-- Integrate Letterboxd API to show watched movies and ratings
+- Integrate Letterboxd API to show watched movies and ratings?
+- Add 'New Episode' Banner for ongoing TV Shows?
 
 ## Changelog
 
