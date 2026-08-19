@@ -69,13 +69,33 @@ def get_record(tmdb_id):
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    
-    query = "SELECT * FROM mediaStatus WHERE tmdb_id = ?"
-    cursor.execute(query, (tmdb_id,))
-    response = cursor.fetchone()
-    
-    conn.close()
-    return response
+
+    try:
+        query = "SELECT * FROM mediaStatus WHERE tmdb_id = ?"
+        cursor.execute(query, (tmdb_id,))
+        response = cursor.fetchone()
+        return dict(response) if response else None
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return None
+    finally:
+        conn.close()
+
+def get_pks():
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    try:
+        query = "SELECT tmdb_id FROM mediaStatus"
+        cursor.execute(query)
+        response = cursor.fetchall()
+        return [row['tmdb_id'] for row in response]
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return []
+    finally:
+        conn.close()
 
 
 
