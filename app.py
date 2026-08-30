@@ -10,7 +10,7 @@ import requests
 from dotenv import load_dotenv
 from PIL import Image
 from moviepy import VideoClip
-from db_functions import upsert_record,update_record,remove_record,get_record
+from db_functions import upsert_record,update_record,remove_record,get_pks,get_record
 from plex import get_unwatched_media
 from pathlib import Path
 import config
@@ -339,6 +339,7 @@ def main():
     """
     This is the main Orchestrator task of the Project
     """
+    # TODO - Add DB check, if failed - Create one
     # Scan Plex for Unwatched Media
     for library in config.CONTENT_LIBRARIES:
         unwatched_media = get_unwatched_media(library['LibName'],library['ContentType'])

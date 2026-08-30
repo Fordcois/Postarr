@@ -5,6 +5,7 @@ load_dotenv()
 
 BASE_PATH = os.getenv('BASE_PATH', '')
 
+# Libraries must be in this KeyValue name format
 CONTENT_LIBRARIES=[
     {'LibName':'Movies','ContentType':'movies'},
     {'LibName':'TV Shows','ContentType':'tv'},
